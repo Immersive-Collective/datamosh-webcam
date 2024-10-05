@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Webcam Datamosh Effect with Lil.GUI</title>
+    
     <style>
         body {
             margin: 0;
@@ -15,7 +16,6 @@
             background-color: #222;
             color: white;
             font-family: SF Pro Text, SF Pro Icons, Helvetica Neue, Helvetica, Arial, Avenir, Helvetica, Arial, sans-serif;
-
         }
         canvas {
             display: block;
@@ -32,144 +32,227 @@
         #startBtn:hover {
             background-color: #45a049;
         }
+        #info {
+          display: none;
+        }
+        #info-icon {
+
+        }
     </style>
+
 </head>
+
 <body>
 
 <button id="startBtn">Start Webcam</button>
 <canvas id="canvas"></canvas>
 
-<p style="color: white; padding: 10px; max-width: 800px; text-align: center;">
-Here’s a simpler, shorter explanation:
-<ol>
-<li><strong>Webcam</strong>: The browser captures your webcam video.</li>
-<li><strong>Canvas</strong>: The video gets drawn frame-by-frame onto the webpage's canvas.</li>
-<li><strong>Keyframes and Delta Frames</strong>:<ul>
-    <li>Keyframes: Full images.</li>
-    <li>Delta Frames: Just the changes between frames to save space.</li></ul></li>
-<li><strong>Datamosh Effect</strong>:<ul>
-    <li>Normally, delta frames update smoothly.</li>
-    <li>In datamosh, we repeat delta frames multiple times. This causes parts of the video to glitch and stretch weirdly, creating the effect.</li></ul></li>
-<li><strong>Controls</strong>:<ul>
-    <li><strong>Speed</strong>: Adjusts how often the glitches happen.</li>
-    <li><strong>Keyframe Button</strong>: Resets the video to a clean frame when the glitches get too messy.</li></ul></li>
-</ol>
-That’s how it creates the glitchy video effect!
-</p>
+<div id="info">
+  <p style="color: white; padding: 10px; max-width: 800px; text-align: center;">
+  Delta Frames Fun
+  <ol>
+  <li><strong>Webcam</strong>: The browser captures your webcam video.</li>
+  <li><strong>Canvas</strong>: The video gets drawn frame-by-frame onto the webpage's canvas.</li>
+  <li><strong>Keyframes and Delta Frames</strong>:<ul>
+      <li>Keyframes: Full images.</li>
+      <li>Delta Frames: Just the changes between frames to save space.</li></ul></li>
+  <li><strong>Datamosh Effect</strong>:<ul>
+      <li>Normally, delta frames update smoothly.</li>
+      <li>In datamosh, we repeat delta frames multiple times. This causes parts of the video to glitch and stretch weirdly, creating the effect.</li></ul></li>
+  <li><strong>Controls</strong>:<ul>
+      <li><strong>Speed</strong>: Adjusts how often the glitches happen.</li>
+      <li><strong>Keyframe Button</strong>: Resets the video to a clean frame when the glitches get too messy.</li></ul></li>
+  </ol>
+  </p>
+</div>
 
+<div id="info-icon">
+  [i]
+</div>
 
 
 
 <script type="module">
 
 
+import GUI from '/node_modules/lil-gui/dist/lil-gui.esm.min.js';
+const PARAMS = {
+    glitchIntensity: 3,
+    frameSkip: 1,
+    playbackSpeed: 1,
+    keyFrame: true,
+    motionBlur: false,
+    colorHue: 0,
+    bwThreshold: false,
+    distortion: 0
+};
 
-    import GUI from '/node_modules/lil-gui/dist/lil-gui.esm.min.js';
+const gui = new GUI();
+gui.add(PARAMS, 'glitchIntensity', 1, 10).name('Glitch Intensity');
+gui.add(PARAMS, 'frameSkip', { NoSkip: 1, Skip2: 2, Skip3: 3 }).name('Frame Skip');
+gui.add(PARAMS, 'playbackSpeed', 0.5, 2).step(0.1).name('Playback Speed');
+gui.add(PARAMS, 'keyFrame').name('Force Keyframe');
+gui.add(PARAMS, 'motionBlur').name('Motion Blur');
+gui.add(PARAMS, 'colorHue', 0, 360).step(1).name('Color Hue');
+gui.add(PARAMS, 'bwThreshold').name('B&W Threshold');
+gui.add(PARAMS, 'distortion', 0, 50).step(1).name('Distortion Effect');
+// Collapse the GUI by default
+gui.close();
 
-    const PARAMS = {
-        glitchIntensity: 3,
-        frameSkip: 1,  // Start with no frame skipping
-        playbackSpeed: 1,
-        keyFrame: true
-    };
+// Add button to toggle info visibility
+const infoPanel = document.getElementById("info");
+const infoIcon = document.getElementById("info-icon");
 
-    const gui = new GUI();
+infoPanel.style.display = 'none';  // Hide info by default
+infoIcon.onclick = () => {
+    infoPanel.style.display = infoPanel.style.display === 'none' ? 'block' : 'none';
+};
+
+document.getElementById('startBtn').onclick = () => main();
+
+async function main() {
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const startButton = document.getElementById('startBtn');
     
-    // Add controls for glitch intensity and playback speed
-    gui.add(PARAMS, 'glitchIntensity', 1, 10).name('Glitch Intensity');
+    // Hide start button after clicking
+    startButton.style.display = 'none';
     
-    // Replace the frameSkip slider with a dropdown for stable options
-    gui.add(PARAMS, 'frameSkip', { NoSkip: 1, Skip2: 2, Skip3: 3 }).name('Frame Skip');
+    // Get webcam stream
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.play();
+
+    // Wait for video to load
+    await new Promise(resolve => video.onloadedmetadata = resolve);
     
-    gui.add(PARAMS, 'playbackSpeed', 0.5, 2).step(0.1).name('Playback Speed');
-    gui.add(PARAMS, 'keyFrame').name('Force Keyframe');
+    // Check aspect ratio to detect if the video needs rotation (portrait mode)
+    const aspectRatio = video.videoWidth / video.videoHeight;
+    let rotateCanvas = false;
 
-    document.getElementById('startBtn').onclick = () => main();
-
-    async function main() {
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const startButton = document.getElementById('startBtn');
-        
-        // Hide start button after clicking
-        startButton.style.display = 'none';
-
-        // Get webcam stream
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const video = document.createElement('video');
-        video.srcObject = stream;
-        video.play();
-
-        // Wait for video to load
-        await new Promise(resolve => video.onloadedmetadata = resolve);
-
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        const encoder = new VideoEncoder({
-            output: handleEncodedChunk,
-            error: (err) => console.error('Encoder error:', err),
-        });
-
-        encoder.configure({
-            codec: 'vp8',
-            width: video.videoWidth,
-            height: video.videoHeight,
-            bitrate: 1_000_000,
-        });
-
-        const decoder = new VideoDecoder({
-            output: handleDecodedFrame,
-            error: (err) => console.error('Decoder error:', err),
-        });
-
-        decoder.configure({
-            codec: 'vp8',
-        });
-
-        let frameCounter = 0;
-
-        // Process video frames
-        function processFrame() {
-            video.playbackRate = PARAMS.playbackSpeed;
-
-            if (frameCounter % PARAMS.frameSkip === 0) {
-                const frame = new VideoFrame(video, {
-                    timestamp: performance.now() * 1000,
-                });
-                encoder.encode(frame, { keyFrame: PARAMS.keyFrame });
-                PARAMS.keyFrame = false; // Reset keyframe after forcing
-                frame.close();
-            }
-            frameCounter++;
-            requestAnimationFrame(processFrame);
-        }
-
-        // Handle encoded chunks for the datamosh effect
-        function handleEncodedChunk(chunk) {
-            if (chunk.type === 'key') {
-                decoder.decode(chunk);
-            } else {
-                for (let i = 0; i < PARAMS.glitchIntensity; i++) {
-                    decoder.decode(chunk);
-                }
-            }
-        }
-
-        // Draw the decoded frame onto the canvas
-        function handleDecodedFrame(frame) {
-            ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
-            frame.close();
-        }
-
-        processFrame(); // Start encoding/decoding
+    if (aspectRatio < 1) {
+        rotateCanvas = true;  // Portrait mode detected
     }
 
+    // Set canvas size based on video (before rotation)
+    canvas.width = rotateCanvas ? video.videoHeight : video.videoWidth;
+    canvas.height = rotateCanvas ? video.videoWidth : video.videoHeight;
+
+    const encoder = new VideoEncoder({
+        output: handleEncodedChunk,
+        error: (err) => console.error('Encoder error:', err),
+    });
+
+    encoder.configure({
+        codec: 'vp8',
+        width: canvas.width,
+        height: canvas.height,
+        bitrate: 1_000_000,
+    });
+
+    const decoder = new VideoDecoder({
+        output: handleDecodedFrame,
+        error: (err) => console.error('Decoder error:', err),
+    });
+
+    decoder.configure({
+        codec: 'vp8',
+    });
+
+    let frameCounter = 0;
+    let previousFrame = null;
+
+    // Process video frames
+    function processFrame() {
+        video.playbackRate = PARAMS.playbackSpeed;
+
+        if (frameCounter % PARAMS.frameSkip === 0) {
+            const frame = new VideoFrame(video, {
+                timestamp: performance.now() * 1000,
+            });
+            encoder.encode(frame, { keyFrame: PARAMS.keyFrame });
+            PARAMS.keyFrame = false; // Reset keyframe after forcing
+            frame.close();
+        }
+        frameCounter++;
+        requestAnimationFrame(processFrame);
+    }
+
+    // Handle encoded chunks for the datamosh effect
+    function handleEncodedChunk(chunk) {
+        if (chunk.type === 'key') {
+            decoder.decode(chunk);
+        } else {
+            for (let i = 0; i < PARAMS.glitchIntensity; i++) {
+                decoder.decode(chunk);
+            }
+        }
+    }
+
+    // Apply visual effects to the decoded frame
+    function applyEffects(frame) {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        // Apply B&W Threshold
+        if (PARAMS.bwThreshold) {
+            for (let i = 0; i < data.length; i += 4) {
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                const value = avg > 128 ? 255 : 0;
+                data[i] = data[i + 1] = data[i + 2] = value;
+            }
+        }
+
+        // Apply Color Hue Shift
+        if (PARAMS.colorHue !== 0) {
+            ctx.filter = `hue-rotate(${PARAMS.colorHue}deg)`;
+        }
+
+        // Apply Distortion Effect (simple shifting pixels horizontally)
+        if (PARAMS.distortion > 0) {
+            for (let i = 0; i < data.length; i += 4 * PARAMS.distortion) {
+                const tempR = data[i];
+                data[i] = data[i + 4 * PARAMS.distortion] || data[i];
+                data[i + 4 * PARAMS.distortion] = tempR;
+            }
+        }
+
+        // Apply Motion Blur by averaging with the previous frame
+        if (PARAMS.motionBlur && previousFrame) {
+            const prevData = previousFrame.data;
+            for (let i = 0; i < data.length; i++) {
+                data[i] = (data[i] + prevData[i]) / 2;
+            }
+        }
+
+        // Save the current frame to be used in motion blur effect
+        previousFrame = new ImageData(new Uint8ClampedArray(data), canvas.width, canvas.height);
+
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    // Draw the decoded frame onto the canvas and apply effects
+    function handleDecodedFrame(frame) {
+        // Handle canvas rotation if in portrait mode
+        if (rotateCanvas) {
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(Math.PI / 2); // Rotate by 90 degrees
+            ctx.drawImage(frame, -canvas.height / 2, -canvas.width / 2, canvas.height, canvas.width);
+            ctx.restore();
+        } else {
+            ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+        }
+        applyEffects(frame);
+        frame.close();
+    }
+
+    processFrame(); // Start encoding/decoding
+}
 
 
 
 </script>
-
-
 </body>
 </html>
