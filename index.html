@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam Datamosh Effect with Lil.GUI</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #222;
+            color: white;
+            font-family: SF Pro Text, SF Pro Icons, Helvetica Neue, Helvetica, Arial, Avenir, Helvetica, Arial, sans-serif;
+
+        }
+        canvas {
+            display: block;
+        }
+        #startBtn {
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #startBtn:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+<button id="startBtn">Start Webcam</button>
+<canvas id="canvas"></canvas>
+
+<p style="color: white; padding: 10px; max-width: 800px; text-align: center;">
+Here’s a simpler, shorter explanation:
+<ol>
+<li><strong>Webcam</strong>: The browser captures your webcam video.</li>
+<li><strong>Canvas</strong>: The video gets drawn frame-by-frame onto the webpage's canvas.</li>
+<li><strong>Keyframes and Delta Frames</strong>:<ul>
+    <li>Keyframes: Full images.</li>
+    <li>Delta Frames: Just the changes between frames to save space.</li></ul></li>
+<li><strong>Datamosh Effect</strong>:<ul>
+    <li>Normally, delta frames update smoothly.</li>
+    <li>In datamosh, we repeat delta frames multiple times. This causes parts of the video to glitch and stretch weirdly, creating the effect.</li></ul></li>
+<li><strong>Controls</strong>:<ul>
+    <li><strong>Speed</strong>: Adjusts how often the glitches happen.</li>
+    <li><strong>Keyframe Button</strong>: Resets the video to a clean frame when the glitches get too messy.</li></ul></li>
+</ol>
+That’s how it creates the glitchy video effect!
+</p>
+
+
+
+
+<script type="module">
+
+
+
+    import GUI from '/node_modules/lil-gui/dist/lil-gui.esm.min.js';
+
+    const PARAMS = {
+        glitchIntensity: 3,
+        frameSkip: 1,  // Start with no frame skipping
+        playbackSpeed: 1,
+        keyFrame: true
+    };
+
+    const gui = new GUI();
+    
+    // Add controls for glitch intensity and playback speed
+    gui.add(PARAMS, 'glitchIntensity', 1, 10).name('Glitch Intensity');
+    
+    // Replace the frameSkip slider with a dropdown for stable options
+    gui.add(PARAMS, 'frameSkip', { NoSkip: 1, Skip2: 2, Skip3: 3 }).name('Frame Skip');
+    
+    gui.add(PARAMS, 'playbackSpeed', 0.5, 2).step(0.1).name('Playback Speed');
+    gui.add(PARAMS, 'keyFrame').name('Force Keyframe');
+
+    document.getElementById('startBtn').onclick = () => main();
+
+    async function main() {
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startBtn');
+        
+        // Hide start button after clicking
+        startButton.style.display = 'none';
+
+        // Get webcam stream
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.play();
+
+        // Wait for video to load
+        await new Promise(resolve => video.onloadedmetadata = resolve);
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        const encoder = new VideoEncoder({
+            output: handleEncodedChunk,
+            error: (err) => console.error('Encoder error:', err),
+        });
+
+        encoder.configure({
+            codec: 'vp8',
+            width: video.videoWidth,
+            height: video.videoHeight,
+            bitrate: 1_000_000,
+        });
+
+        const decoder = new VideoDecoder({
+            output: handleDecodedFrame,
+            error: (err) => console.error('Decoder error:', err),
+        });
+
+        decoder.configure({
+            codec: 'vp8',
+        });
+
+        let frameCounter = 0;
+
+        // Process video frames
+        function processFrame() {
+            video.playbackRate = PARAMS.playbackSpeed;
+
+            if (frameCounter % PARAMS.frameSkip === 0) {
+                const frame = new VideoFrame(video, {
+                    timestamp: performance.now() * 1000,
+                });
+                encoder.encode(frame, { keyFrame: PARAMS.keyFrame });
+                PARAMS.keyFrame = false; // Reset keyframe after forcing
+                frame.close();
+            }
+            frameCounter++;
+            requestAnimationFrame(processFrame);
+        }
+
+        // Handle encoded chunks for the datamosh effect
+        function handleEncodedChunk(chunk) {
+            if (chunk.type === 'key') {
+                decoder.decode(chunk);
+            } else {
+                for (let i = 0; i < PARAMS.glitchIntensity; i++) {
+                    decoder.decode(chunk);
+                }
+            }
+        }
+
+        // Draw the decoded frame onto the canvas
+        function handleDecodedFrame(frame) {
+            ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+            frame.close();
+        }
+
+        processFrame(); // Start encoding/decoding
+    }
+
+
+
+
+</script>
+
+
+</body>
+</html>
